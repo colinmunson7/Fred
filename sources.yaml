@@ -7,6 +7,7 @@
 #   rss      - any RSS or Atom feed (url)
 #   bluesky  - a public Bluesky profile (handle)
 #   youtube  - a YouTube channel (channel_id); Shorts are skipped
+#   dles     - one random daily game from dles.aukspot.com each edition
 #
 # Optional per-source filters:
 #   include: [words]   keep only items whose title mentions one of these
@@ -43,11 +44,7 @@ briefing:
     type: rss
     url: https://www.techdirt.com/feed/
     verify: true
-  - name: More Perfect Union
-    type: youtube
-    channel_id: UCehBVAPy-bxmnbNARF-_tvA
-
-# The interest feed: 9 topic areas.
+# The interest feed: 10 topic areas, shown in this order.
 topics:
   - key: climate
     label: Climate & Clean Energy
@@ -56,12 +53,18 @@ topics:
       - {name: Smart Cities Dive, type: rss, url: "https://www.smartcitiesdive.com/feeds/news/"}
       - {name: Canary Media, type: rss, url: "https://www.canarymedia.com/rss.rss"}
       - {name: The Urbanist, type: rss, url: "https://www.theurbanist.org/feed/"}
+
+
+  - key: local
+    label: Seattle
+    sources:
+      - {name: PubliCola, type: rss, url: "https://publicola.com/feed/"}
       - {name: Seattle Transit Blog, type: rss, url: "https://seattletransitblog.com/feed/"}
+      - {name: Seattle Bike Blog, type: rss, url: "https://www.seattlebikeblog.com/feed/"}
 
   - key: outdoors
     label: Outdoors
     sources:
-      - {name: Seattle Bike Blog, type: rss, url: "https://www.seattlebikeblog.com/feed/"}
       - {name: ExplorersWeb, type: rss, url: "https://explorersweb.com/feed/", verify: true}
       - {name: iRunFar, type: rss, url: "https://www.irunfar.com/feed", verify: true}
       - {name: Uphill Athlete, type: rss, url: "https://uphillathlete.com/feed/"}
@@ -73,13 +76,21 @@ topics:
       - {name: Stronger by Science, type: rss, url: "https://www.strongerbyscience.com/feed/"}
       - {name: TrainingBeta, type: rss, url: "https://www.trainingbeta.com/feed/"}
 
+
   - key: dnd
     label: D&D
     sources:
-      - {name: D&D Beyond, type: rss, url: "https://www.dndbeyond.com/posts.rss", verify: true}
-      - {name: EN World, type: rss, url: "https://www.enworld.org/ewr-porta/index.rss"}
-      - {name: Sly Flourish, type: rss, url: "https://slyflourish.com/index.xml", verify: true}
-      - {name: The Arcane Library, type: rss, url: "https://www.thearcanelibrary.com/blogs/news.atom", verify: true}
+      - {name: Sly Flourish, type: rss, url: "https://slyflourish.com/index.xml"}
+      - {name: D&D Beyond, type: rss, url: "https://www.dndbeyond.com/posts.rss"}
+      - {name: The Arcane Library, type: rss, url: "https://www.thearcanelibrary.com/blogs/news.atom"}
+      - name: EN World
+        type: rss
+        url: https://www.enworld.org/ewr-porta/index.rss
+        # EN World covers every tabletop game; keep only D&D stories.
+        include: ["d&d", "dnd", "dungeons", "dragons", "5e", "5.5e", "wizards of the coast", "wotc",
+                  "forgotten realms", "dungeon master", "player's handbook", "monster manual",
+                  "dungeon master's guide", "critical role", "baldur", "greyhawk", "eberron",
+                  "ravenloft", "spelljammer", "dragonlance"]
 
   - key: games
     label: Video Games
@@ -91,8 +102,7 @@ topics:
       - {name: Stardew Valley, type: rss, url: "https://www.stardewvalley.net/feed/"}
       - {name: "PokéCommunity: ROM Hacks", type: rss, url: "https://www.pokecommunity.com/forums/progressing-rom-hacks-showcase.67/index.rss"}
       - {name: "PokéCommunity: Challenges", type: rss, url: "https://www.pokecommunity.com/forums/202/index.rss"}
-      - {name: pChal, type: youtube, channel_id: UCvjsnl6wNtVIm0i1sCpN9Uw}
-      - {name: WolfeyVGC, type: youtube, channel_id: UC9OZkS1Mhl5UvKSiPrYqsxg}
+
 
   - key: sports
     label: Sports
@@ -105,12 +115,7 @@ topics:
       - {name: Rodger Sherman, type: bluesky, handle: rodger.bsky.social}
       - {name: Mina Kimes, type: bluesky, handle: minakimes.bsky.social}
       - {name: The Athletic FC, type: bluesky, handle: theathleticfc.bsky.social}
-      - {name: The Adam Clery Football Channel, type: youtube, channel_id: UCRXVJv9f3oob6l3-ktUbXUA}
 
-  - key: local
-    label: Seattle
-    sources:
-      - {name: PubliCola, type: rss, url: "https://publicola.com/feed/"}
 
   - key: clothing
     label: Clothing
@@ -118,12 +123,14 @@ topics:
       - {name: Put This On, type: rss, url: "https://putthison.com/feed/"}
       - {name: Derek Guy, type: bluesky, handle: dieworkwear.bsky.social}
 
-  - key: other
-    label: Money & Puzzles
+
+  - key: puzzles
+    label: Puzzles
     sources:
-      - {name: Bogle Center, type: rss, url: "https://boglecenter.net/feed/"}
-      - {name: Casual Finance, type: youtube, channel_id: UCrNfRFWnLC3tCy1TnyhVQ7g}
+      - {name: Daily game, type: dles}
       - {name: Diary of a Crossword Fiend, type: rss, url: "https://www.crosswordfiend.com/feed/"}
+      # Parked until there's a Money section:
+      # - {name: Bogle Center, type: rss, url: "https://boglecenter.net/feed/"}
 
   - key: humor
     label: Humor
@@ -131,7 +138,16 @@ topics:
       - {name: The Onion, type: bluesky, handle: theonion.com}
       - {name: Darth, type: bluesky, handle: darthbluesky.bsky.social}
       - {name: Peter, type: bluesky, handle: notalawyer.bsky.social}
+
+  - key: videos
+    label: Videos
+    sources:
+      - {name: pChal, type: youtube, channel_id: UCvjsnl6wNtVIm0i1sCpN9Uw}
+      - {name: WolfeyVGC, type: youtube, channel_id: UC9OZkS1Mhl5UvKSiPrYqsxg}
+      - {name: The Adam Clery Football Channel, type: youtube, channel_id: UCRXVJv9f3oob6l3-ktUbXUA}
       - {name: Drew Gooden, type: youtube, channel_id: UCjtkaY_1JrDw6uUtwvcPsTg}
+      - {name: Casual Finance, type: youtube, channel_id: UCrNfRFWnLC3tCy1TnyhVQ7g}
+      - {name: More Perfect Union, type: youtube, channel_id: UCehBVAPy-bxmnbNARF-_tvA}
 
 # Shown on the "you're caught up" screen, one per edition.
 suggestions:

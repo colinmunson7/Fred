@@ -55,6 +55,7 @@ def main(out: Path) -> None:
     now = datetime.now(timezone.utc)
     out.mkdir(parents=True, exist_ok=True)
     sources = list(config["briefing"]) + [s for t in config["topics"] for s in t["sources"]]
+    sources = [s for s in sources if s["type"] != "dles"]
     for i, src in enumerate(sources):
         titles = SPECIAL.get(src["name"]) or [f"{src['name']} story number {n + 1}" for n in range(6)]
         xml = rss(src["name"], titles, now, comments=(i % 3 == 0), post=src["type"] == "bluesky")

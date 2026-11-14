@@ -112,3 +112,28 @@ def test_topic_picks_come_from_different_sources(edition):
         sources = [i["source"] for i in payload["items"] if i["topic"] == topic]
         # Repeats only when a topic has fewer sources than picks (e.g. Seattle has one).
         assert len(set(sources)) == min(len(sources), available[topic]), topic
+
+
+def test_puzzles_always_has_a_daily_game(edition):
+    payload, *_ = edition
+    games = [i for i in payload["items"] if i["kind"] == "game"]
+    assert len(games) == 1 and games[0]["topic"] == "puzzles"
+
+
+def test_videos_section_is_youtube_only(edition):
+    payload, *_ = edition
+    vids = [i for i in payload["items"] + payload["reserve"] if i["topic"] == "videos"]
+    assert vids and all(i["kind"] == "video" for i in vids)
+    assert all(i["topic"] == "videos" for i in payload["items"] + payload["reserve"] if i["kind"] == "video")
+
+
+def test_slow_sources_still_get_in(tmp_path):
+    """A weekly blog's latest post should beat a busy site's fourth story."""
+    now = datetime.now(timezone.utc)
+    def it(n, src, hours):
+        return build.Item(f"{src}{n}", f"{src} story {n}", f"https://x/{src}/{n}", src, "dnd", "article",
+                          (now - timedelta(hours=hours)).isoformat())
+    busy = [it(n, "EN World", n) for n in range(1, 10)]
+    weekly = [it(1, "Sly Flourish", 24 * 5)]
+    picked = build.fresh_by_source(busy + weekly, SETTINGS, now, set())
+    assert any(i.source == "Sly Flourish" for i in picked)

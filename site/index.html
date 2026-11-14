@@ -52,6 +52,12 @@
     font-family: var(--sans); font-size: 12px; color: var(--muted);
     padding: 8px 0; border-bottom: 1px solid var(--rule);
   }
+  .more-count {
+    font-family: var(--sans); font-size: 12px; color: var(--muted);
+    padding: 6px 0; border-bottom: 1px solid var(--rule);
+  }
+  .more-count b { color: var(--ink); font-weight: 600; }
+  .more-count.high b { color: var(--accent); }
   .preview-note {
     font-family: var(--sans); font-size: 12px; background: var(--faint);
     border: 1px solid var(--rule); padding: 8px 10px; margin-top: 12px; color: var(--muted);
@@ -141,6 +147,7 @@
     <div class="tagline">The day's worth reading, then done</div>
   </header>
   <div class="dateline"><span id="edition">Loading…</span><span id="progress"></span></div>
+  <div class="more-count" id="more-count"></div>
   <div id="preview"></div>
   <nav class="filters" id="filters" aria-label="Filter by topic"></nav>
   <main id="main"></main>
@@ -183,7 +190,8 @@
   }
 
   function storyHTML(item, lead) {
-    const tag = item.kind === "video" ? '<span class="tag">Video</span>' : item.kind === "post" ? '<span class="tag">Bluesky</span>' : "";
+    const tags = { video: "Video", post: "Bluesky", game: "Game" };
+    const tag = tags[item.kind] ? '<span class="tag">' + tags[item.kind] + "</span>" : "";
     const cls = ["story", lead ? "lead" : "", item.kind === "post" ? "post" : "", viewed[item.id] ? "read" : ""].join(" ");
     return '<a class="' + cls + '" href="' + esc(item.link) + '" target="_blank" rel="noopener" data-id="' + esc(item.id) + '">' +
       '<p class="headline">' + esc(item.title) + "</p>" +
@@ -267,6 +275,29 @@
       "</ul></details>";
   }
 
+  // ---------- "asked for more" counter
+  function moreLog() {
+    const monthAgo = Date.now() - 30 * 864e5;
+    return store.get("moreLog", []).filter((t) => t > monthAgo);
+  }
+
+  function renderMoreCount() {
+    const log = moreLog();
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const today = log.filter((t) => t >= midnight.getTime()).length;
+    const week = log.filter((t) => t >= Date.now() - 7 * 864e5).length;
+    const el = $("more-count");
+    el.className = "more-count" + (today >= 3 ? " high" : "");
+    el.innerHTML = "Asked for more: <b>" + today + "</b> today · <b>" + week + "</b> this week";
+  }
+
+  function countMore() {
+    const log = moreLog();
+    log.push(Date.now());
+    store.set("moreLog", log);
+    renderMoreCount();
+  }
+
   // ---------- events
   document.addEventListener("click", (e) => {
     const story = e.target.closest(".story");
@@ -288,6 +319,7 @@
       return;
     }
     if (e.target.id === "more") {
+      countMore();
       // Check for a newer edition first; otherwise unlock a few reserve stories.
       load(true).then((changed) => {
         if (changed) return;
@@ -310,6 +342,7 @@
     renderFilters();
     render();
     renderFooter();
+    renderMoreCount();
     return changed;
   }
 

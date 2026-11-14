@@ -41,7 +41,7 @@ class Item:
     link: str
     source: str
     topic: str
-    kind: str              # article | post | video
+    kind: str              # article | post | video | game
     published: str         # ISO 8601, UTC
     score: int | None = None   # popularity signal (comment count) when a feed has one
 
@@ -71,6 +71,33 @@ def feed_url(src: dict) -> str:
         # The UULF playlist is a channel's long-form uploads only (no Shorts).
         return f"https://www.youtube.com/feeds/videos.xml?playlist_id=UULF{src['channel_id'][2:]}"
     raise ValueError(f"Unknown source type: {kind}")
+
+
+DLES_LIST = "https://raw.githubusercontent.com/aukspot/dles/main/src/lib/data/dles.json"
+
+
+def dles_item(src: dict, topic: str, now: datetime, edition_id: str,
+              offline_dir: Path | None) -> list[Item]:
+    """Pick one game from the dles.aukspot.com list (open source: github.com/aukspot/dles).
+
+    The choice is seeded by the edition, so rebuilding an edition keeps the same game.
+    """
+    import random
+
+    def item(name: str, description: str, url: str) -> Item:
+        title = f"{name}: {description}" if description else name
+        uid = hashlib.sha1(f"{url}|{edition_id}".encode()).hexdigest()[:12]
+        return Item(uid, title, url, src["name"], topic, "game", now.isoformat())
+
+    if offline_dir is not None:
+        return [item("Bandle", "Guess the song, one instrument at a time.", "https://bandle.app")]
+
+    import requests
+
+    games = requests.get(DLES_LIST, headers={"User-Agent": USER_AGENT}, timeout=20).json()
+    games = sorted((g for g in games if g.get("url")), key=lambda g: g.get("id", 0))
+    game = random.Random(edition_id).choice(games)
+    return [item(game["name"], (game.get("description") or "").strip(), game["url"])]
 
 
 def offline_name(src: dict) -> str:
@@ -169,8 +196,10 @@ def apply_filters(src: dict, items: list[Item]) -> list[Item]:
     return kept
 
 
-def gather(groups: list[tuple[str, list[dict]]], offline_dir: Path | None):
+def gather(groups: list[tuple[str, list[dict]]], offline_dir: Path | None,
+           now: datetime | None = None, edition_id: str = ""):
     """Fetch every source in parallel. Returns (items by topic, reports)."""
+    now = now or datetime.now(timezone.utc)
     jobs = [(topic, src) for topic, sources in groups for src in sources]
     by_topic: dict[str, list[Item]] = {topic: [] for topic, _ in groups}
     reports: list[FetchReport] = []
@@ -178,7 +207,10 @@ def gather(groups: list[tuple[str, list[dict]]], offline_dir: Path | None):
     def run(job):
         topic, src = job
         try:
-            items = parse(src, topic, fetch(src, offline_dir))
+            if src["type"] == "dles":
+                items = dles_item(src, topic, now, edition_id, offline_dir)
+            else:
+                items = parse(src, topic, fetch(src, offline_dir))
             return topic, items, FetchReport(src["name"], True, len(items), verify=src.get("verify", False))
         except Exception as exc:  # one broken feed should never break the edition
             return topic, [], FetchReport(src["name"], False, 0, str(exc)[:200], src.get("verify", False))
@@ -243,6 +275,23 @@ def recent(items: list[Item], hours: float, now: datetime) -> list[Item]:
     return [i for i in items if i.published_dt >= cutoff]
 
 
+def fresh_by_source(items: list[Item], settings: dict, now: datetime, seen: set[str]) -> list[Item]:
+    """Everything from the last lookback_hours, plus, for any source with nothing
+    that recent, its newest unseen item from the last slow_topic_lookback_days."""
+    by_source: dict[str, list[Item]] = {}
+    for item in items:
+        by_source.setdefault(item.source, []).append(item)
+    out: list[Item] = []
+    for source_items in by_source.values():
+        fresh = recent(source_items, settings["lookback_hours"], now)
+        if not [i for i in fresh if i.id not in seen]:
+            older = [i for i in recent(source_items, settings["slow_topic_lookback_days"] * 24, now)
+                     if i.id not in seen]
+            fresh = sorted(older, key=lambda i: i.published_dt, reverse=True)[:1]
+        out.extend(fresh)
+    return out
+
+
 def pick(by_topic: dict[str, list[Item]], settings: dict, now: datetime,
          seen: set[str]) -> tuple[list[Item], list[Item]]:
     """Round-robin across topics so every area gets a turn, within the caps."""
@@ -252,10 +301,7 @@ def pick(by_topic: dict[str, list[Item]], settings: dict, now: datetime,
 
     queues: dict[str, list[Item]] = {}
     for topic, items in by_topic.items():
-        fresh = recent(items, settings["lookback_hours"], now)
-        if len(fresh) < 2:  # slow topic: reach further back so it still shows up
-            fresh = recent(items, settings["slow_topic_lookback_days"] * 24, now)
-        queues[topic] = interleave(rank(dedupe(fresh, seen)))
+        queues[topic] = interleave(rank(dedupe(fresh_by_source(items, settings, now, seen), seen)))
 
     chosen: list[Item] = []
     topic_count = {t: 0 for t in queues}
@@ -355,7 +401,7 @@ def build(config_path: Path, out_path: Path, history_path: Path,
 
     groups = [("briefing", config.get("briefing", []))]
     groups += [(t["key"], t["sources"]) for t in config["topics"]]
-    by_topic, reports = gather(groups, offline_dir)
+    by_topic, reports = gather(groups, offline_dir, now, edition_id)
 
     briefing = pick_briefing(by_topic.pop("briefing"), settings["briefing_size"], now, seen)
     main, reserve = pick(by_topic, settings, now, seen | {i.id for i in briefing})
