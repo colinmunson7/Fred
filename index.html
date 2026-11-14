@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fred">
+<meta name="theme-color" content="#f6f1e7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16140f" media="(prefers-color-scheme: dark)">
+<title>Fred</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+  :root {
+    --paper: #f6f1e7;
+    --ink: #1b1a17;
+    --muted: #6b665c;
+    --rule: #cfc6b4;
+    --faint: #e9e2d3;
+    --accent: #9a2b1f;
+    --read: #a39d90;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #16140f;
+      --ink: #ece6d8;
+      --muted: #a39d90;
+      --rule: #3a362d;
+      --faint: #24211b;
+      --accent: #e0806f;
+      --read: #6f695d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    line-height: 1.35;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  .page { max-width: 680px; margin: 0 auto; padding: 0 18px 48px; }
+
+  /* Masthead */
+  .masthead { text-align: center; padding: 22px 0 10px; border-bottom: 3px double var(--ink); }
+  .masthead h1 {
+    font-size: 54px; line-height: 1; margin: 0; letter-spacing: -0.02em;
+    font-weight: 700; font-style: italic;
+  }
+  .masthead .tagline {
+    font-family: var(--sans); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); margin-top: 6px;
+  }
+  .dateline {
+    display: flex; justify-content: space-between; gap: 12px;
+    font-family: var(--sans); font-size: 12px; color: var(--muted);
+    padding: 8px 0; border-bottom: 1px solid var(--rule);
+  }
+  .preview-note {
+    font-family: var(--sans); font-size: 12px; background: var(--faint);
+    border: 1px solid var(--rule); padding: 8px 10px; margin-top: 12px; color: var(--muted);
+  }
+
+  /* Topic filter */
+  .filters {
+    display: flex; gap: 6px; overflow-x: auto; padding: 10px 0;
+    border-bottom: 1px solid var(--rule); scrollbar-width: none;
+    position: sticky; top: 0; background: var(--paper); z-index: 2;
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none; font-family: var(--sans); font-size: 13px; padding: 6px 11px;
+    border: 1px solid var(--rule); border-radius: 999px; background: transparent;
+    color: var(--ink); cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  /* Sections */
+  .section { padding-top: 18px; }
+  .section-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    border-top: 2px solid var(--ink); padding-top: 6px; margin-bottom: 4px;
+  }
+  .section-head h2 {
+    font-family: var(--sans); font-size: 12px; letter-spacing: 0.14em;
+    text-transform: uppercase; margin: 0; font-weight: 700;
+  }
+  .section-head span { font-family: var(--sans); font-size: 12px; color: var(--muted); }
+
+  .story { display: block; text-decoration: none; color: inherit; padding: 11px 0; border-bottom: 1px solid var(--rule); }
+  .story:last-child { border-bottom: 0; }
+  .story .headline { font-size: 19px; font-weight: 600; margin: 0; }
+  .story.lead .headline { font-size: 25px; line-height: 1.2; }
+  .story.post .headline { font-weight: 400; font-style: italic; font-size: 18px; }
+  .meta {
+    font-family: var(--sans); font-size: 12px; color: var(--muted);
+    margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  .tag {
+    font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid var(--rule); padding: 1px 5px; border-radius: 3px;
+  }
+  .story.read .headline { color: var(--read); font-weight: 400; }
+  .story.read .meta::after { content: "Read"; color: var(--read); }
+  .story:active { background: var(--faint); }
+
+  /* Briefing */
+  .briefing ol { list-style: none; counter-reset: b; margin: 0; padding: 0; }
+  .briefing li { counter-increment: b; border-bottom: 1px solid var(--rule); }
+  .briefing li:last-child { border-bottom: 0; }
+  .briefing .story { display: grid; grid-template-columns: 26px 1fr; border: 0; }
+  .briefing .story::before {
+    content: counter(b); font-family: var(--sans); font-weight: 700;
+    color: var(--accent); font-size: 15px; padding-top: 2px;
+  }
+  .briefing .story::before { grid-row: 1 / span 2; }
+  .briefing .story .headline, .briefing .story .meta { grid-column: 2; }
+  .briefing .headline { font-size: 17px; }
+
+  /* Caught up */
+  .done { text-align: center; padding: 34px 6px 10px; margin-top: 22px; border-top: 3px double var(--ink); }
+  .done h2 { font-size: 30px; font-style: italic; margin: 0 0 6px; }
+  .done .progress { font-family: var(--sans); font-size: 13px; color: var(--muted); }
+  .nudge { margin: 22px auto 0; max-width: 420px; padding: 16px; border: 1px solid var(--rule); background: var(--faint); }
+  .nudge .label { font-family: var(--sans); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .nudge .what { font-size: 22px; margin-top: 4px; }
+  .worth { margin-top: 22px; font-family: var(--sans); font-size: 13px; color: var(--muted); }
+  .worth button, .more {
+    font-family: var(--sans); font-size: 13px; background: transparent; color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 999px; padding: 6px 14px; margin: 6px 4px 0; cursor: pointer;
+  }
+  .worth button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .more-wrap { margin-top: 40px; }
+  .more { border: 0; color: var(--muted); text-decoration: underline; font-size: 12px; }
+  .footer { font-family: var(--sans); font-size: 11px; color: var(--muted); text-align: center; margin-top: 28px; }
+  .footer details { margin-top: 8px; text-align: left; }
+  .footer li.bad { color: var(--accent); }
+  .empty { font-family: var(--sans); color: var(--muted); padding: 40px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <h1>Fred</h1>
+    <div class="tagline">The day's worth reading, then done</div>
+  </header>
+  <div class="dateline"><span id="edition">Loading…</span><span id="progress"></span></div>
+  <div id="preview"></div>
+  <nav class="filters" id="filters" aria-label="Filter by topic"></nav>
+  <main id="main"></main>
+  <section class="done" id="done" hidden></section>
+  <footer class="footer" id="footer"></footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- small storage helpers (storage can be unavailable; never let that break the page)
+  const store = {
+    get(key, fallback) {
+      try { const v = localStorage.getItem("fred:" + key); return v ? JSON.parse(v) : fallback; }
+      catch (e) { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem("fred:" + key, JSON.stringify(value)); } catch (e) { /* ignore */ }
+    }
+  };
+
+  const state = { data: null, filter: "all", revealed: 0 };
+  let viewed = store.get("viewed", {});
+
+  // Forget read marks older than two weeks.
+  const twoWeeks = Date.now() - 14 * 864e5;
+  for (const id in viewed) if (viewed[id] < twoWeeks) delete viewed[id];
+  store.set("viewed", viewed);
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function ago(iso) {
+    const mins = Math.max(1, Math.round((Date.now() - new Date(iso)) / 6e4));
+    if (mins < 60) return mins + "m ago";
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return hrs + "h ago";
+    return Math.round(hrs / 24) + "d ago";
+  }
+
+  function storyHTML(item, lead) {
+    const tag = item.kind === "video" ? '<span class="tag">Video</span>' : item.kind === "post" ? '<span class="tag">Bluesky</span>' : "";
+    const cls = ["story", lead ? "lead" : "", item.kind === "post" ? "post" : "", viewed[item.id] ? "read" : ""].join(" ");
+    return '<a class="' + cls + '" href="' + esc(item.link) + '" target="_blank" rel="noopener" data-id="' + esc(item.id) + '">' +
+      '<p class="headline">' + esc(item.title) + "</p>" +
+      '<div class="meta">' + tag + "<span>" + esc(item.source) + "</span><span>" + ago(item.published) + "</span></div></a>";
+  }
+
+  function visibleItems() {
+    const d = state.data;
+    return d.items.concat(d.reserve.slice(0, state.revealed));
+  }
+
+  function render() {
+    const d = state.data;
+    const items = visibleItems();
+    const showAll = state.filter === "all";
+    let html = "";
+
+    if (showAll && d.briefing.length) {
+      html += '<section class="section briefing"><div class="section-head"><h2>The Briefing</h2><span>' +
+        d.briefing.length + (d.briefing.length === 1 ? " story" : " stories") + "</span></div><ol>" +
+        d.briefing.map((i) => "<li>" + storyHTML(i, false) + "</li>").join("") + "</ol></section>";
+    }
+
+    for (const topic of d.topics) {
+      if (!showAll && state.filter !== topic.key) continue;
+      const list = items.filter((i) => i.topic === topic.key);
+      if (!list.length) continue;
+      html += '<section class="section"><div class="section-head"><h2>' + esc(topic.label) + "</h2><span>" +
+        list.length + "</span></div>" + list.map((i, n) => storyHTML(i, n === 0)).join("") + "</section>";
+    }
+    $("main").innerHTML = html || '<p class="empty">Nothing here this edition.</p>';
+    renderProgress();
+    renderDone();
+  }
+
+  function renderProgress() {
+    const all = state.data.briefing.concat(visibleItems());
+    const read = all.filter((i) => viewed[i.id]).length;
+    $("progress").textContent = read + " of " + all.length + " read";
+    return { read, total: all.length };
+  }
+
+  function renderDone() {
+    const d = state.data;
+    const p = renderProgress();
+    const ratings = store.get("ratings", {});
+    const mine = ratings[d.edition];
+    const left = d.reserve.length - state.revealed;
+    const box = $("done");
+    box.hidden = false;
+    box.innerHTML =
+      "<h2>You're caught up.</h2>" +
+      '<div class="progress">That\'s this edition: ' + p.total + " stories. The next one arrives " + nextEdition() + ".</div>" +
+      (d.suggestion ? '<div class="nudge"><div class="label">Up next, away from the screen</div><div class="what">' + esc(d.suggestion) + "</div></div>" : "") +
+      '<div class="worth">Was this edition worth it?<br>' +
+        '<button data-rate="yes" aria-pressed="' + (mine === "yes") + '">Yes</button>' +
+        '<button data-rate="no" aria-pressed="' + (mine === "no") + '">Not really</button></div>' +
+      '<div class="more-wrap">' + (left > 0
+        ? '<button class="more" id="more">Show a few more</button>'
+        : '<span class="progress">That\'s everything until the next edition.</span>') + "</div>";
+  }
+
+  function nextEdition() {
+    const h = new Date().getHours();
+    return h < 17 && h >= 6 ? "this evening" : "tomorrow morning";
+  }
+
+  function renderFilters() {
+    const chips = [{ key: "all", label: "All" }].concat(state.data.topics);
+    $("filters").innerHTML = chips.map((c) =>
+      '<button class="chip" data-filter="' + c.key + '" aria-pressed="' + (state.filter === c.key) + '">' + esc(c.label) + "</button>").join("");
+  }
+
+  function renderFooter() {
+    const d = state.data;
+    const bad = d.sources.filter((s) => !s.ok);
+    $("footer").innerHTML = "Built " + new Date(d.built).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) +
+      (bad.length ? " · " + bad.length + " source" + (bad.length > 1 ? "s" : "") + " unavailable" : "") +
+      "<details><summary>Sources this edition</summary><ul>" +
+      d.sources.map((s) => '<li class="' + (s.ok ? "" : "bad") + '">' + esc(s.source) + (s.ok ? " (" + s.items + ")" : " — unavailable") + "</li>").join("") +
+      "</ul></details>";
+  }
+
+  // ---------- events
+  document.addEventListener("click", (e) => {
+    const story = e.target.closest(".story");
+    if (story) {
+      viewed[story.dataset.id] = Date.now();
+      store.set("viewed", viewed);
+      story.classList.add("read");
+      renderProgress();
+      return;
+    }
+    const chip = e.target.closest("[data-filter]");
+    if (chip) { state.filter = chip.dataset.filter; renderFilters(); render(); window.scrollTo(0, 0); return; }
+    const rate = e.target.closest("[data-rate]");
+    if (rate) {
+      const ratings = store.get("ratings", {});
+      ratings[state.data.edition] = rate.dataset.rate;
+      store.set("ratings", ratings);
+      renderDone();
+      return;
+    }
+    if (e.target.id === "more") {
+      // Check for a newer edition first; otherwise unlock a few reserve stories.
+      load(true).then((changed) => {
+        if (changed) return;
+        state.revealed = Math.min(state.data.reserve.length, state.revealed + 5);
+        const rev = store.get("revealed", {});
+        rev[state.data.edition] = state.revealed;
+        store.set("revealed", rev);
+        render();
+      });
+    }
+  });
+
+  // ---------- loading
+  function apply(data) {
+    const changed = !state.data || state.data.edition !== data.edition;
+    state.data = data;
+    state.revealed = store.get("revealed", {})[data.edition] || 0;
+    $("edition").textContent = data.label;
+    if (data.preview) $("preview").innerHTML = '<div class="preview-note">' + esc(data.preview) + "</div>";
+    renderFilters();
+    render();
+    renderFooter();
+    return changed;
+  }
+
+  function load(checkOnly) {
+    if (window.FRED_DATA) return Promise.resolve(checkOnly ? false : apply(window.FRED_DATA));
+    return fetch("data.json?t=" + Date.now(), { cache: "no-store" })
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then((data) => {
+        if (checkOnly && state.data && data.edition === state.data.edition) return false;
+        return apply(data);
+      })
+      .catch(() => {
+        if (!state.data) $("main").innerHTML = '<p class="empty">Fred couldn\'t load today\'s edition. Try again in a minute.</p>';
+        return false;
+      });
+  }
+
+  load(false);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,142 @@
+# Fred (Fake Reddit) - source list and feed rules
+#
+# This is the "settings screen" for Fred. To add, remove or move a source,
+# ask Claude to edit this file (or edit it yourself on GitHub).
+#
+# Source types:
+#   rss      - any RSS or Atom feed (url)
+#   bluesky  - a public Bluesky profile (handle)
+#   youtube  - a YouTube channel (channel_id); Shorts are skipped
+#
+# Optional per-source filters:
+#   include: [words]   keep only items whose title mentions one of these
+#   exclude: [words]   drop items whose title mentions any of these
+#   verify: true       feed wasn't confirmed during planning; a failure is expected and harmless
+
+settings:
+  posts_per_batch: 25        # headlines in each morning/evening edition
+  max_per_topic: 5           # keeps any one topic from taking over
+  max_per_source: 3          # keeps any one site from taking over
+  briefing_size: 8           # top-of-page news briefing
+  reserve_size: 10           # extra items unlocked by "show a few more"
+  lookback_hours: 36         # how far back a normal edition looks
+  slow_topic_lookback_days: 10   # low-volume topics may reach further back
+  timezone: America/Los_Angeles
+
+# The news briefing at the top of the page (not part of the 25).
+briefing:
+  - name: NPR News
+    type: rss
+    url: https://feeds.npr.org/1001/rss.xml
+  - name: Associated Press
+    type: rss
+    url: https://flipboard.com/@associatedpress/top-stories-u7govdf1z.rss
+  - name: New York Times
+    type: rss
+    url: https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml
+    verify: true
+  - name: ProPublica
+    type: rss
+    url: https://www.propublica.org/feeds/propublica/main
+    verify: true
+  - name: Techdirt
+    type: rss
+    url: https://www.techdirt.com/feed/
+    verify: true
+  - name: More Perfect Union
+    type: youtube
+    channel_id: UCehBVAPy-bxmnbNARF-_tvA
+
+# The interest feed: 9 topic areas.
+topics:
+  - key: climate
+    label: Climate & Clean Energy
+    sources:
+      - {name: Utility Dive, type: rss, url: "https://www.utilitydive.com/feeds/news/"}
+      - {name: Smart Cities Dive, type: rss, url: "https://www.smartcitiesdive.com/feeds/news/"}
+      - {name: Canary Media, type: rss, url: "https://www.canarymedia.com/rss.rss"}
+      - {name: The Urbanist, type: rss, url: "https://www.theurbanist.org/feed/"}
+      - {name: Seattle Transit Blog, type: rss, url: "https://seattletransitblog.com/feed/"}
+
+  - key: outdoors
+    label: Outdoors
+    sources:
+      - {name: Seattle Bike Blog, type: rss, url: "https://www.seattlebikeblog.com/feed/"}
+      - {name: ExplorersWeb, type: rss, url: "https://explorersweb.com/feed/", verify: true}
+      - {name: iRunFar, type: rss, url: "https://www.irunfar.com/feed", verify: true}
+      - {name: Uphill Athlete, type: rss, url: "https://uphillathlete.com/feed/"}
+      - name: Mountain Tactical Institute
+        type: rss
+        url: https://mtntactical.com/feed/
+        exclude: [SWAT, AFROTC, USAF, military, tactical athlete, police, fire, army, marine, ranger, selection, operator]
+      - {name: Sweat Science, type: rss, url: "https://sweatscience.substack.com/feed", verify: true}
+      - {name: Stronger by Science, type: rss, url: "https://www.strongerbyscience.com/feed/"}
+      - {name: TrainingBeta, type: rss, url: "https://www.trainingbeta.com/feed/"}
+
+  - key: dnd
+    label: D&D
+    sources:
+      - {name: D&D Beyond, type: rss, url: "https://www.dndbeyond.com/posts.rss", verify: true}
+      - {name: EN World, type: rss, url: "https://www.enworld.org/ewr-porta/index.rss"}
+      - {name: Sly Flourish, type: rss, url: "https://slyflourish.com/index.xml", verify: true}
+      - {name: The Arcane Library, type: rss, url: "https://www.thearcanelibrary.com/blogs/news.atom", verify: true}
+
+  - key: games
+    label: Video Games
+    sources:
+      - name: Nintendo Life
+        type: rss
+        url: https://www.nintendolife.com/feeds/latest
+        include: [pokemon, pokémon, zelda, stardew]
+      - {name: Stardew Valley, type: rss, url: "https://www.stardewvalley.net/feed/"}
+      - {name: "PokéCommunity: ROM Hacks", type: rss, url: "https://www.pokecommunity.com/forums/progressing-rom-hacks-showcase.67/index.rss"}
+      - {name: "PokéCommunity: Challenges", type: rss, url: "https://www.pokecommunity.com/forums/202/index.rss"}
+      - {name: pChal, type: youtube, channel_id: UCvjsnl6wNtVIm0i1sCpN9Uw}
+      - {name: WolfeyVGC, type: youtube, channel_id: UC9OZkS1Mhl5UvKSiPrYqsxg}
+
+  - key: sports
+    label: Sports
+    sources:
+      - {name: ESPN NFL, type: rss, url: "https://www.espn.com/espn/rss/nfl/news"}
+      - {name: ESPN College Football, type: rss, url: "https://www.espn.com/espn/rss/ncf/news", verify: true}
+      - {name: ESPN Soccer, type: rss, url: "https://www.espn.com/espn/rss/soccer/news", verify: true}
+      - {name: The Equalizer, type: rss, url: "https://equalizersoccer.com/feed/"}
+      - {name: Uni Watch, type: rss, url: "https://www.uni-watch.com/feed/"}
+      - {name: Rodger Sherman, type: bluesky, handle: rodger.bsky.social}
+      - {name: Mina Kimes, type: bluesky, handle: minakimes.bsky.social}
+      - {name: The Athletic FC, type: bluesky, handle: theathleticfc.bsky.social}
+      - {name: The Adam Clery Football Channel, type: youtube, channel_id: UCRXVJv9f3oob6l3-ktUbXUA}
+
+  - key: local
+    label: Seattle
+    sources:
+      - {name: PubliCola, type: rss, url: "https://publicola.com/feed/"}
+
+  - key: clothing
+    label: Clothing
+    sources:
+      - {name: Put This On, type: rss, url: "https://putthison.com/feed/"}
+      - {name: Derek Guy, type: bluesky, handle: dieworkwear.bsky.social}
+
+  - key: other
+    label: Money & Puzzles
+    sources:
+      - {name: Bogle Center, type: rss, url: "https://boglecenter.net/feed/"}
+      - {name: Casual Finance, type: youtube, channel_id: UCrNfRFWnLC3tCy1TnyhVQ7g}
+      - {name: Diary of a Crossword Fiend, type: rss, url: "https://www.crosswordfiend.com/feed/"}
+
+  - key: humor
+    label: Humor
+    sources:
+      - {name: The Onion, type: bluesky, handle: theonion.com}
+      - {name: Darth, type: bluesky, handle: darthbluesky.bsky.social}
+      - {name: Peter, type: bluesky, handle: notalawyer.bsky.social}
+      - {name: Drew Gooden, type: youtube, channel_id: UCjtkaY_1JrDw6uUtwvcPsTg}
+
+# Shown on the "you're caught up" screen, one per edition.
+suggestions:
+  - Do today's crossword
+  - Read a chapter of your book
+  - Go for a short walk or run
+  - Plan your next D&D session
+  - Clean something

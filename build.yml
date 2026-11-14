@@ -1,0 +1,52 @@
+name: Build Fred
+
+on:
+  schedule:
+    - cron: "0 14 * * *"   # morning edition: 6am PST / 7am PDT
+    - cron: "0 1 * * *"    # evening edition: 5pm PST / 6pm PDT
+  workflow_dispatch:        # "Run workflow" button for a manual edition
+  push:
+    branches: [main]
+    paths: ["sources.yaml", "site/**", "scripts/**"]
+
+permissions:
+  contents: write   # to save data/history.json (what Fred has already shown)
+  pages: write
+  id-token: write
+
+concurrency:
+  group: fred
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Build edition
+        run: python scripts/build.py
+
+      - name: Remember what was shown
+        run: |
+          git config user.name "fred-bot"
+          git config user.email "fred-bot@users.noreply.github.com"
+          git add data/history.json
+          git diff --cached --quiet || git commit -m "Edition history" && git push
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
