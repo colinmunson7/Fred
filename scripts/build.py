@@ -27,7 +27,8 @@ import feedparser
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-USER_AGENT = "Fred/1.0 (personal headline reader; +https://github.com)"
+USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/130.0 Safari/537.36 Fred/1.1")
 HISTORY_DAYS = 14
 
 
@@ -86,7 +87,7 @@ def fetch(src: dict, offline_dir: Path | None) -> bytes:
         return path.read_bytes()
     import requests  # imported here so offline runs and tests don't need network libs
 
-    resp = requests.get(feed_url(src), headers={"User-Agent": USER_AGENT}, timeout=20)
+    resp = requests.get(feed_url(src), headers={"User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.8"}, timeout=20)
     resp.raise_for_status()
     return resp.content
 
@@ -141,7 +142,9 @@ def parse(src: dict, topic: str, raw: bytes) -> list[Item]:
         title = clean(entry.get("title", ""))
         if kind == "post" or not title:
             # Bluesky posts have no headline: the post text is the headline.
-            title = shorten(clean(entry.get("summary") or entry.get("description") or title))
+            text = clean(entry.get("summary") or entry.get("description") or title)
+            text = text.replace("[contains quote post or other embedded content]", "").strip()
+            title = shorten(text)
         if not title:
             continue
         if kind == "post" and src.get("skip_replies", True) and title.startswith("@"):
@@ -221,6 +224,20 @@ def rank(items: list[Item]) -> list[Item]:
     return sorted(items, key=key, reverse=True)
 
 
+def interleave(items: list[Item]) -> list[Item]:
+    """Take each source's best item in turn, so a topic's picks come from
+    different sources (a busy Bluesky account can't fill a whole topic)."""
+    by_source: dict[str, list[Item]] = {}
+    for item in items:                      # items arrive already ranked
+        by_source.setdefault(item.source, []).append(item)
+    out: list[Item] = []
+    while any(by_source.values()):
+        for queue in by_source.values():
+            if queue:
+                out.append(queue.pop(0))
+    return out
+
+
 def recent(items: list[Item], hours: float, now: datetime) -> list[Item]:
     cutoff = now - timedelta(hours=hours)
     return [i for i in items if i.published_dt >= cutoff]
@@ -238,7 +255,7 @@ def pick(by_topic: dict[str, list[Item]], settings: dict, now: datetime,
         fresh = recent(items, settings["lookback_hours"], now)
         if len(fresh) < 2:  # slow topic: reach further back so it still shows up
             fresh = recent(items, settings["slow_topic_lookback_days"] * 24, now)
-        queues[topic] = rank(dedupe(fresh, seen))
+        queues[topic] = interleave(rank(dedupe(fresh, seen)))
 
     chosen: list[Item] = []
     topic_count = {t: 0 for t in queues}
@@ -302,12 +319,19 @@ def pick_briefing(items: list[Item], size: int, now: datetime, seen: set[str]) -
 
 # ---------------------------------------------------------------- history
 
-def load_history(path: Path, now: datetime) -> dict[str, str]:
+def load_history(path: Path, now: datetime) -> dict[str, dict]:
+    """{item id: {"t": when shown, "e": edition id}} for the last two weeks."""
     if not path.exists():
         return {}
     data = json.loads(path.read_text())
     cutoff = now - timedelta(days=HISTORY_DAYS)
-    return {k: v for k, v in data.items() if datetime.fromisoformat(v) >= cutoff}
+    out = {}
+    for key, value in data.items():
+        if isinstance(value, str):          # older format: no edition recorded
+            value = {"t": value, "e": ""}
+        if datetime.fromisoformat(value["t"]) >= cutoff:
+            out[key] = value
+    return out
 
 
 # ---------------------------------------------------------------- main
@@ -324,7 +348,10 @@ def build(config_path: Path, out_path: Path, history_path: Path,
     settings = config["settings"]
     now = now or datetime.now(timezone.utc)
     history = load_history(history_path, now)
-    seen = set(history)
+    edition_id, edition_label = edition_name(now, settings["timezone"])
+    # Skip stories shown in earlier editions, but not ones from this same edition:
+    # a rebuild of the current edition should come out the same, not use up stories.
+    seen = {k for k, v in history.items() if v["e"] != edition_id}
 
     groups = [("briefing", config.get("briefing", []))]
     groups += [(t["key"], t["sources"]) for t in config["topics"]]
@@ -333,7 +360,6 @@ def build(config_path: Path, out_path: Path, history_path: Path,
     briefing = pick_briefing(by_topic.pop("briefing"), settings["briefing_size"], now, seen)
     main, reserve = pick(by_topic, settings, now, seen | {i.id for i in briefing})
 
-    edition_id, edition_label = edition_name(now, settings["timezone"])
     suggestions = config.get("suggestions", [])
     index = int(hashlib.sha1(edition_id.encode()).hexdigest(), 16) % max(len(suggestions), 1)
 
@@ -352,7 +378,7 @@ def build(config_path: Path, out_path: Path, history_path: Path,
     out_path.write_text(json.dumps(payload, indent=1, ensure_ascii=False))
 
     for item in briefing + main + reserve:
-        history[item.id] = now.isoformat()
+        history.setdefault(item.id, {"t": now.isoformat(), "e": edition_id})
     history_path.parent.mkdir(parents=True, exist_ok=True)
     history_path.write_text(json.dumps(history, indent=0, sort_keys=True))
     return payload

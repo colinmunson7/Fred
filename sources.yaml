@@ -15,7 +15,7 @@
 
 settings:
   posts_per_batch: 25        # headlines in each morning/evening edition
-  max_per_topic: 5           # keeps any one topic from taking over
+  max_per_topic: 3           # keeps any one topic from taking over
   max_per_source: 3          # keeps any one site from taking over
   briefing_size: 8           # top-of-page news briefing
   reserve_size: 10           # extra items unlocked by "show a few more"

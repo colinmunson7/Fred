@@ -5,6 +5,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import yaml
 
@@ -73,7 +75,8 @@ def test_bluesky_posts_use_text_as_headline(edition):
 
 def test_next_edition_skips_what_was_shown(edition):
     payload, fixtures, out, history = edition
-    second = build.build(ROOT / "sources.yaml", out, history, fixtures)
+    later = datetime.now(timezone.utc) + timedelta(hours=12)
+    second = build.build(ROOT / "sources.yaml", out, history, fixtures, now=later)
     first_ids = {i["id"] for i in payload["briefing"] + payload["items"] + payload["reserve"]}
     second_ids = {i["id"] for i in second["briefing"] + second["items"] + second["reserve"]}
     assert not first_ids & second_ids
@@ -92,3 +95,20 @@ def test_broken_feed_does_not_break_edition(tmp_path):
 def test_youtube_feed_skips_shorts():
     url = build.feed_url({"type": "youtube", "channel_id": "UCvjsnl6wNtVIm0i1sCpN9Uw"})
     assert url.endswith("playlist_id=UULFvjsnl6wNtVIm0i1sCpN9Uw")
+
+
+def test_rebuilding_same_edition_does_not_use_up_stories(edition):
+    payload, fixtures, out, history = edition
+    again = build.build(ROOT / "sources.yaml", out, history, fixtures)
+    assert [i["id"] for i in again["items"]] == [i["id"] for i in payload["items"]]
+    assert len(again["briefing"]) == SETTINGS["briefing_size"]
+
+
+def test_topic_picks_come_from_different_sources(edition):
+    payload, *_ = edition
+    config = yaml.safe_load((ROOT / "sources.yaml").read_text())
+    available = {t["key"]: len(t["sources"]) for t in config["topics"]}
+    for topic in {i["topic"] for i in payload["items"]}:
+        sources = [i["source"] for i in payload["items"] if i["topic"] == topic]
+        # Repeats only when a topic has fewer sources than picks (e.g. Seattle has one).
+        assert len(set(sources)) == min(len(sources), available[topic]), topic
