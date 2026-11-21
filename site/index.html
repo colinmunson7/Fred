@@ -106,6 +106,19 @@
   .story.read .meta::after { content: "Read"; color: var(--read); }
   .story:active { background: var(--faint); }
 
+  /* Happening Now */
+  .happening { padding-top: 16px; }
+  .happening .section-head { border-top-color: var(--accent); }
+  .happening .section-head h2 { color: var(--accent); }
+  .happening .section-head h2::before {
+    content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); margin-right: 7px; vertical-align: 1px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) { .happening .section-head h2::before { animation: none; } }
+  .tag.live { color: var(--accent); border-color: var(--accent); }
+
   /* Briefing */
   .briefing ol { list-style: none; counter-reset: b; margin: 0; padding: 0; }
   .briefing li { counter-increment: b; border-bottom: 1px solid var(--rule); }
@@ -190,12 +203,15 @@
   }
 
   function storyHTML(item, lead) {
-    const tags = { video: "Video", post: "Bluesky", game: "Game" };
-    const tag = tags[item.kind] ? '<span class="tag">' + tags[item.kind] + "</span>" : "";
+    const tags = { video: "Video", post: "Bluesky", game: "Game", wikipedia: "Wikipedia", archive: "From the archive", live: "Live" };
+    const tag = tags[item.kind] ? '<span class="tag' + (item.kind === "live" ? " live" : "") + '">' + tags[item.kind] + "</span>" : "";
+    // Picks that aren't news show no "hours ago"; archive posts show their year instead.
+    const when = item.kind === "archive" ? new Date(item.published).getFullYear()
+      : (item.kind === "game" || item.kind === "wikipedia") ? "" : ago(item.published);
     const cls = ["story", lead ? "lead" : "", item.kind === "post" ? "post" : "", viewed[item.id] ? "read" : ""].join(" ");
     return '<a class="' + cls + '" href="' + esc(item.link) + '" target="_blank" rel="noopener" data-id="' + esc(item.id) + '">' +
       '<p class="headline">' + esc(item.title) + "</p>" +
-      '<div class="meta">' + tag + "<span>" + esc(item.source) + "</span><span>" + ago(item.published) + "</span></div></a>";
+      '<div class="meta">' + tag + "<span>" + esc(item.source) + "</span>" + (when ? "<span>" + when + "</span>" : "") + "</div></a>";
   }
 
   function visibleItems() {
@@ -208,6 +224,12 @@
     const items = visibleItems();
     const showAll = state.filter === "all";
     let html = "";
+
+    const live = d.happening || [];
+    if (showAll && live.length) {
+      html += '<section class="section happening"><div class="section-head"><h2>Happening Now</h2><span>' +
+        live.length + " live</span></div>" + live.map((i) => storyHTML(i, false)).join("") + "</section>";
+    }
 
     if (showAll && d.briefing.length) {
       html += '<section class="section briefing"><div class="section-head"><h2>The Briefing</h2><span>' +
@@ -256,7 +278,7 @@
 
   function nextEdition() {
     const h = new Date().getHours();
-    return h < 17 && h >= 6 ? "this evening" : "tomorrow morning";
+    return h < 17 && h >= 5 ? "this evening" : "tomorrow morning";
   }
 
   function renderFilters() {
@@ -334,10 +356,12 @@
 
   // ---------- loading
   function apply(data) {
-    const changed = !state.data || state.data.edition !== data.edition;
+    const changed = !state.data || state.data.built !== data.built;
     state.data = data;
     state.revealed = store.get("revealed", {})[data.edition] || 0;
-    $("edition").textContent = data.label;
+    const built = new Date(data.built);
+    $("edition").textContent = data.label + " · Updated " +
+      built.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
     if (data.preview) $("preview").innerHTML = '<div class="preview-note">' + esc(data.preview) + "</div>";
     renderFilters();
     render();
@@ -351,7 +375,7 @@
     return fetch("data.json?t=" + Date.now(), { cache: "no-store" })
       .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then((data) => {
-        if (checkOnly && state.data && data.edition === state.data.edition) return false;
+        if (checkOnly && state.data && data.built === state.data.built) return false;
         return apply(data);
       })
       .catch(() => {
@@ -361,6 +385,18 @@
   }
 
   load(false);
+
+  // A home-screen app often resumes where it left off instead of reloading, so
+  // look for a newer edition each time Fred comes back on screen (at most once a minute).
+  let lastCheck = Date.now();
+  function checkAgain() {
+    if (document.visibilityState !== "visible" || Date.now() - lastCheck < 60e3) return;
+    lastCheck = Date.now();
+    load(true).then((changed) => { if (changed) window.scrollTo(0, 0); });
+  }
+  document.addEventListener("visibilitychange", checkAgain);
+  window.addEventListener("focus", checkAgain);
+  window.addEventListener("pageshow", (e) => { if (e.persisted) { lastCheck = 0; checkAgain(); } });
 })();
 </script>
 </body>

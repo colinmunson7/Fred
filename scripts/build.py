@@ -8,6 +8,8 @@ data/history.json so the same headline doesn't come back in later editions.
 Usage:
     python scripts/build.py                     # live run (fetches feeds)
     python scripts/build.py --offline FIXTURES  # read saved feed files instead
+    python scripts/build.py --skip-if-built     # scheduled backup runs: stop if this
+                                                # edition was already built
 """
 from __future__ import annotations
 
@@ -30,6 +32,10 @@ ROOT = Path(__file__).resolve().parent.parent
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/130.0 Safari/537.36 Fred/1.1")
 HISTORY_DAYS = 14
+# Wikimedia asks API users to identify themselves with a contact URL.
+WIKI_AGENT = "Fred/1.1 (personal headline reader; https://github.com/colinmunson7/Fred)"
+# Picks that aren't news: they skip the freshness window.
+EVERGREEN = {"game", "wikipedia", "archive"}
 
 
 # ---------------------------------------------------------------- data shapes
@@ -41,7 +47,7 @@ class Item:
     link: str
     source: str
     topic: str
-    kind: str              # article | post | video | game
+    kind: str              # article | post | video | game | wikipedia | archive | live
     published: str         # ISO 8601, UTC
     score: int | None = None   # popularity signal (comment count) when a feed has one
 
@@ -98,6 +104,106 @@ def dles_item(src: dict, topic: str, now: datetime, edition_id: str,
     games = sorted((g for g in games if g.get("url")), key=lambda g: g.get("id", 0))
     game = random.Random(edition_id).choice(games)
     return [item(game["name"], (game.get("description") or "").strip(), game["url"])]
+
+
+WIKI_FEATURED = "https://en.wikipedia.org/api/rest_v1/feed/featured/{:%Y/%m/%d}"
+
+
+def wikipedia_items(src: dict, topic: str, now: datetime, edition_id: str,
+                    offline_dir: Path | None, seen: set[str]) -> list[Item]:
+    """Random Wikipedia featured articles: each pick is the "Today's featured
+    article" from a random past date, which gives quality articles on varied topics.
+    Seeded by the edition, so a rebuild keeps the same picks."""
+    import random
+
+    count = src.get("count", 3)
+    rng = random.Random(f"{edition_id}|wikipedia")
+    if offline_dir is not None:
+        names = ["Halley's Comet", "Byzantine Empire", "Hurricane Katrina", "Octopus", "Jazz"]
+        return [Item(hashlib.sha1(n.encode()).hexdigest()[:12], f"{n}: a featured article",
+                     f"https://en.m.wikipedia.org/wiki/{n.replace(' ', '_')}", src["name"], topic,
+                     "wikipedia", now.isoformat()) for n in rng.sample(names, count)]
+
+    import requests
+
+    start, end = datetime(2012, 1, 1, tzinfo=timezone.utc), now - timedelta(days=2)
+    span = (end - start).days
+    items: list[Item] = []
+    for _ in range(count * 4):
+        if len(items) >= count:
+            break
+        day = start + timedelta(days=rng.randrange(span))
+        resp = requests.get(WIKI_FEATURED.format(day), headers={"User-Agent": WIKI_AGENT}, timeout=20)
+        if resp.status_code != 200:
+            continue
+        tfa = resp.json().get("tfa")
+        if not tfa:
+            continue
+        link = tfa["content_urls"]["mobile"]["page"]
+        uid = hashlib.sha1(link.encode()).hexdigest()[:12]
+        if uid in seen or any(i.id == uid for i in items):
+            continue
+        name = tfa["titles"]["normalized"]
+        desc = (tfa.get("description") or "").strip()
+        items.append(Item(uid, f"{name}: {desc}" if desc else name, link, src["name"],
+                          topic, "wikipedia", now.isoformat()))
+    if not items:
+        raise ValueError("no Wikipedia featured articles found")
+    return items
+
+
+def archive_item(src: dict, topic: str, now: datetime, edition_id: str,
+                 offline_dir: Path | None, seen: set[str]) -> list[Item]:
+    """One random older post from a site's back catalogue, skipping anything shown
+    in the last two weeks. Two ways in:
+      feed + pages: a WordPress feed, read at a random page (?paged=N)
+      sitemap:      a sitemap listing every post (titles come from the post's address)
+    """
+    import random
+
+    rng = random.Random(f"{edition_id}|{src['name']}")
+    if offline_dir is not None:
+        pool = [Item(hashlib.sha1(f"{src['name']}{n}".encode()).hexdigest()[:12],
+                     f"{src['name']} archive post {n}", f"https://example.com/{src['name']}/{n}",
+                     src["name"], topic, "archive", "2019-06-01T00:00:00+00:00") for n in range(1, 9)]
+        pool = [i for i in apply_filters(src, pool) if i.id not in seen]
+        return [rng.choice(pool)] if pool else []
+
+    import requests
+
+    headers = {"User-Agent": USER_AGENT}
+    pool: list[Item] = []
+    if "feed" in src:
+        page = rng.randint(1, src.get("pages", 1))
+        for attempt in (page, 1):
+            url = src["feed"] if attempt == 1 else f"{src['feed']}{'&' if '?' in src['feed'] else '?'}paged={attempt}"
+            resp = requests.get(url, headers=headers, timeout=20)
+            if resp.status_code == 200:
+                pool = parse({**src, "type": "rss"}, topic, resp.content)
+                if pool:
+                    break
+    else:
+        resp = requests.get(src["sitemap"], headers=headers, timeout=30)
+        resp.raise_for_status()
+        for block in re.findall(r"<url>(.*?)</url>", resp.text, re.S):
+            loc = re.search(r"<loc>\s*(.*?)\s*</loc>", block)
+            if not loc or "/post/" not in loc.group(1):
+                continue
+            link = html.unescape(loc.group(1))
+            slug = link.rstrip("/").rsplit("/", 1)[-1]
+            title = slug.replace("-", " ").strip().capitalize()
+            mod = re.search(r"<lastmod>\s*(\d{4}-\d{2}-\d{2})", block)
+            when = (datetime.fromisoformat(mod.group(1)).replace(tzinfo=timezone.utc)
+                    if mod else now)
+            pool.append(Item(hashlib.sha1(link.encode()).hexdigest()[:12], title, link,
+                             src["name"], topic, "archive", when.isoformat()))
+        pool = apply_filters(src, pool)
+    pool = [i for i in pool if i.id not in seen]
+    for item in pool:
+        item.kind = "archive"
+    if not pool:
+        raise ValueError("no archive posts found")
+    return [rng.choice(pool)]
 
 
 def offline_name(src: dict) -> str:
@@ -197,23 +303,31 @@ def apply_filters(src: dict, items: list[Item]) -> list[Item]:
 
 
 def gather(groups: list[tuple[str, list[dict]]], offline_dir: Path | None,
-           now: datetime | None = None, edition_id: str = ""):
-    """Fetch every source in parallel. Returns (items by topic, reports)."""
+           now: datetime | None = None, edition_id: str = "", seen: set[str] | None = None):
+    """Fetch every source in parallel. Returns (items by group, reports).
+
+    A group key may carry a suffix ("puzzles::extra"); items keep the plain topic."""
     now = now or datetime.now(timezone.utc)
+    seen = seen or set()
     jobs = [(topic, src) for topic, sources in groups for src in sources]
     by_topic: dict[str, list[Item]] = {topic: [] for topic, _ in groups}
     reports: list[FetchReport] = []
 
     def run(job):
-        topic, src = job
+        group, src = job
+        topic = group.split("::")[0]
         try:
             if src["type"] == "dles":
                 items = dles_item(src, topic, now, edition_id, offline_dir)
+            elif src["type"] == "wikipedia":
+                items = wikipedia_items(src, topic, now, edition_id, offline_dir, seen)
+            elif src["type"] == "archive":
+                items = archive_item(src, topic, now, edition_id, offline_dir, seen)
             else:
                 items = parse(src, topic, fetch(src, offline_dir))
-            return topic, items, FetchReport(src["name"], True, len(items), verify=src.get("verify", False))
+            return group, items, FetchReport(src["name"], True, len(items), verify=src.get("verify", False))
         except Exception as exc:  # one broken feed should never break the edition
-            return topic, [], FetchReport(src["name"], False, 0, str(exc)[:200], src.get("verify", False))
+            return group, [], FetchReport(src["name"], False, 0, str(exc)[:200], src.get("verify", False))
 
     with futures.ThreadPoolExecutor(max_workers=12) as pool:
         for topic, items, report in pool.map(run, jobs):
@@ -283,6 +397,9 @@ def fresh_by_source(items: list[Item], settings: dict, now: datetime, seen: set[
         by_source.setdefault(item.source, []).append(item)
     out: list[Item] = []
     for source_items in by_source.values():
+        if source_items and source_items[0].kind in EVERGREEN:
+            out.extend(source_items)
+            continue
         fresh = recent(source_items, settings["lookback_hours"], now)
         if not [i for i in fresh if i.id not in seen]:
             older = [i for i in recent(source_items, settings["slow_topic_lookback_days"] * 24, now)
@@ -293,10 +410,11 @@ def fresh_by_source(items: list[Item], settings: dict, now: datetime, seen: set[
 
 
 def pick(by_topic: dict[str, list[Item]], settings: dict, now: datetime,
-         seen: set[str]) -> tuple[list[Item], list[Item]]:
+         seen: set[str], caps: dict[str, int] | None = None) -> tuple[list[Item], list[Item]]:
     """Round-robin across topics so every area gets a turn, within the caps."""
     total = settings["posts_per_batch"] + settings["reserve_size"]
     per_topic = settings["max_per_topic"]
+    caps = caps or {}
     per_source = settings["max_per_source"]
 
     queues: dict[str, list[Item]] = {}
@@ -331,7 +449,7 @@ def pick(by_topic: dict[str, list[Item]], settings: dict, now: datetime,
         for topic in queues:
             if len(chosen) >= settings["posts_per_batch"]:
                 break
-            progressed |= take_one(topic, per_topic)
+            progressed |= take_one(topic, caps.get(topic, per_topic))
         if not progressed:
             break
     main = chosen[:]
@@ -342,7 +460,7 @@ def pick(by_topic: dict[str, list[Item]], settings: dict, now: datetime,
         for topic in queues:
             if len(chosen) >= total:
                 break
-            progressed |= take_one(topic, per_topic + 2)
+            progressed |= take_one(topic, caps.get(topic, per_topic) + 2)
         if not progressed:
             break
     reserve = chosen[len(main):]
@@ -360,6 +478,28 @@ def pick_briefing(items: list[Item], size: int, now: datetime, seen: set[str]) -
         for queue in by_source.values():
             if queue and len(out) < size:
                 out.append(queue.pop(0))
+    return out
+
+
+LIVE_LINK = re.compile(r"/live/|live-updates|live-blog", re.I)
+LIVE_TITLE = re.compile(r"^(live updates?|live:|live coverage|live blog)", re.I)
+
+
+def is_live(item: Item) -> bool:
+    return bool(LIVE_LINK.search(item.link) or LIVE_TITLE.search(item.title))
+
+
+def pick_happening(items: list[Item], cfg: dict, now: datetime) -> list[Item]:
+    """Live blogs from the chosen outlets, newest first. Not tied to history:
+    a live blog that's still running should keep its spot in the next edition."""
+    sources = set(cfg.get("sources", []))
+    live = [i for i in recent(items, cfg.get("hours", 12), now)
+            if (not sources or i.source in sources) and is_live(i)]
+    live = dedupe(sorted(live, key=lambda i: i.published_dt, reverse=True), set())
+    out = []
+    for item in live[: cfg.get("max", 3)]:
+        item.kind = "live"
+        out.append(item)
     return out
 
 
@@ -389,22 +529,37 @@ def edition_name(now: datetime, tz: str) -> tuple[str, str]:
 
 
 def build(config_path: Path, out_path: Path, history_path: Path,
-          offline_dir: Path | None = None, now: datetime | None = None) -> dict:
+          offline_dir: Path | None = None, now: datetime | None = None,
+          skip_if_built: bool = False) -> dict | None:
     config = yaml.safe_load(config_path.read_text())
     settings = config["settings"]
     now = now or datetime.now(timezone.utc)
     history = load_history(history_path, now)
     edition_id, edition_label = edition_name(now, settings["timezone"])
+    if skip_if_built and any(v["e"] == edition_id for v in history.values()):
+        return None  # a backup run: this edition is already out
     # Skip stories shown in earlier editions, but not ones from this same edition:
     # a rebuild of the current edition should come out the same, not use up stories.
     seen = {k for k, v in history.items() if v["e"] != edition_id}
 
     groups = [("briefing", config.get("briefing", []))]
-    groups += [(t["key"], t["sources"]) for t in config["topics"]]
-    by_topic, reports = gather(groups, offline_dir, now, edition_id)
+    for t in config["topics"]:
+        groups.append((t["key"], [s for s in t["sources"] if not s.get("extra")]))
+        extras = [s for s in t["sources"] if s.get("extra")]
+        if extras:
+            groups.append((f"{t['key']}::extra", extras))
+    by_group, reports = gather(groups, offline_dir, now, edition_id, seen)
 
-    briefing = pick_briefing(by_topic.pop("briefing"), settings["briefing_size"], now, seen)
-    main, reserve = pick(by_topic, settings, now, seen | {i.id for i in briefing})
+    pool = by_group.pop("briefing")
+    happening = pick_happening(pool, config.get("happening_now", {}), now)
+    live_ids = {i.id for i in happening}
+    briefing = pick_briefing([i for i in pool if i.id not in live_ids and not is_live(i)],
+                             settings["briefing_size"], now, seen)
+
+    extra_items = [i for key in list(by_group) if key.endswith("::extra") for i in by_group.pop(key)]
+    caps = {t["key"]: t["max"] for t in config["topics"] if "max" in t}
+    main, reserve = pick(by_group, settings, now, seen | {i.id for i in briefing}, caps)
+    main += [i for i in extra_items if i.id not in seen]   # e.g. Wikipedia: on top of the cap
 
     suggestions = config.get("suggestions", [])
     index = int(hashlib.sha1(edition_id.encode()).hexdigest(), 16) % max(len(suggestions), 1)
@@ -413,6 +568,7 @@ def build(config_path: Path, out_path: Path, history_path: Path,
         "edition": edition_id,
         "label": edition_label,
         "built": now.isoformat(),
+        "happening": [asdict(i) for i in happening],
         "topics": [{"key": t["key"], "label": t["label"]} for t in config["topics"]],
         "briefing": [asdict(i) for i in briefing],
         "items": [asdict(i) for i in main],
@@ -430,17 +586,34 @@ def build(config_path: Path, out_path: Path, history_path: Path,
     return payload
 
 
+def write_output(key: str, value: str) -> None:
+    """Tell later GitHub Actions steps whether this run built anything."""
+    import os
+
+    path = os.environ.get("GITHUB_OUTPUT")
+    if path:
+        with open(path, "a") as fh:
+            fh.write(f"{key}={value}\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build one edition of Fred.")
     parser.add_argument("--config", default=ROOT / "sources.yaml", type=Path)
     parser.add_argument("--out", default=ROOT / "site" / "data.json", type=Path)
     parser.add_argument("--history", default=ROOT / "data" / "history.json", type=Path)
     parser.add_argument("--offline", type=Path, help="read feeds from saved files in this folder")
+    parser.add_argument("--skip-if-built", action="store_true",
+                        help="stop without building if this edition already exists (backup runs)")
     args = parser.parse_args()
 
-    payload = build(args.config, args.out, args.history, args.offline)
+    payload = build(args.config, args.out, args.history, args.offline,
+                    skip_if_built=args.skip_if_built)
+    write_output("skipped", "true" if payload is None else "false")
+    if payload is None:
+        print("This edition is already built; nothing to do.")
+        return 0
     failed = [s for s in payload["sources"] if not s["ok"]]
-    print(f"{payload['label']}: {len(payload['briefing'])} briefing, "
+    print(f"{payload['label']}: {len(payload['happening'])} live, {len(payload['briefing'])} briefing, "
           f"{len(payload['items'])} headlines, {len(payload['reserve'])} in reserve")
     for s in failed:
         flag = " (unverified source)" if s["verify"] else ""

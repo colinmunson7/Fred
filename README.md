@@ -5,7 +5,7 @@ chosen sites, forums, Bluesky accounts and YouTube channels, plus a short news
 briefing. No comments, no algorithm, no infinite scroll. It ends with
 "You're caught up."
 
-A new edition is built every morning (6am Pacific) and evening (5pm Pacific).
+A new edition is built every morning (about 5am Pacific) and evening (about 5pm Pacific), with backup runs in case GitHub starts late.
 
 ## What's in here
 

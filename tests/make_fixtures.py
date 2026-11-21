@@ -19,6 +19,18 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from build import offline_name  # noqa: E402
 
 SPECIAL = {
+    "NPR News": [
+        "Live updates: Storm makes landfall on the Gulf Coast",
+        "Senate passes spending bill",
+        "New study on sleep and memory",
+        "Markets close higher",
+    ],
+    "A Wealth of Common Sense": [
+        "Animal Spirits: What Just Happened",
+        "The Bear Markets",
+        "Talk Your Book: Customized Income",
+        "This is Why You Need a Plan",
+    ],
     "Mountain Tactical Institute": [
         "SWAT Operator After a 22K Trail Race",
         "Mountain Base Fitness: 6-Week Plan Review",
@@ -55,7 +67,7 @@ def main(out: Path) -> None:
     now = datetime.now(timezone.utc)
     out.mkdir(parents=True, exist_ok=True)
     sources = list(config["briefing"]) + [s for t in config["topics"] for s in t["sources"]]
-    sources = [s for s in sources if s["type"] != "dles"]
+    sources = [s for s in sources if s["type"] not in ("dles", "wikipedia", "archive")]
     for i, src in enumerate(sources):
         titles = SPECIAL.get(src["name"]) or [f"{src['name']} story number {n + 1}" for n in range(6)]
         xml = rss(src["name"], titles, now, comments=(i % 3 == 0), post=src["type"] == "bluesky")

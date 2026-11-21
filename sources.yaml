@@ -1,18 +1,25 @@
-# Fred (Fake Reddit) - source list and feed rules
+# Fred (Fake Reddit) - source list and feed rules  (V1, 2026-11-20)
 #
 # This is the "settings screen" for Fred. To add, remove or move a source,
 # ask Claude to edit this file (or edit it yourself on GitHub).
 #
 # Source types:
-#   rss      - any RSS or Atom feed (url)
-#   bluesky  - a public Bluesky profile (handle)
-#   youtube  - a YouTube channel (channel_id); Shorts are skipped
-#   dles     - one random daily game from dles.aukspot.com each edition
+#   rss        - any RSS or Atom feed (url)
+#   bluesky    - a public Bluesky profile (handle)
+#   youtube    - a YouTube channel (channel_id); Shorts are skipped
+#   dles       - one random daily game from dles.aukspot.com each edition
+#   wikipedia  - random Wikipedia featured articles (count)
+#   archive    - one random older post from a site's back catalogue, via either
+#                a WordPress feed with pages (feed + pages) or a sitemap (sitemap)
 #
-# Optional per-source filters:
+# Optional per-source settings:
 #   include: [words]   keep only items whose title mentions one of these
 #   exclude: [words]   drop items whose title mentions any of these
+#   extra: true        shown on top of the topic's cap (used for Wikipedia picks)
 #   verify: true       feed wasn't confirmed during planning; a failure is expected and harmless
+#
+# Optional per-topic setting:
+#   max: N             overrides max_per_topic for that section
 
 settings:
   posts_per_batch: 25        # headlines in each morning/evening edition
@@ -21,30 +28,24 @@ settings:
   briefing_size: 8           # top-of-page news briefing
   reserve_size: 10           # extra items unlocked by "show a few more"
   lookback_hours: 36         # how far back a normal edition looks
-  slow_topic_lookback_days: 10   # low-volume topics may reach further back
+  slow_topic_lookback_days: 10   # a slow source's newest post may be this old
   timezone: America/Los_Angeles
+
+# "Happening Now": live-blog stories from these briefing sources, shown above the briefing.
+happening_now:
+  sources: [NPR News, New York Times]
+  max: 3
+  hours: 12
 
 # The news briefing at the top of the page (not part of the 25).
 briefing:
-  - name: NPR News
-    type: rss
-    url: https://feeds.npr.org/1001/rss.xml
-  - name: Associated Press
-    type: rss
-    url: https://flipboard.com/@associatedpress/top-stories-u7govdf1z.rss
-  - name: New York Times
-    type: rss
-    url: https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml
-    verify: true
-  - name: ProPublica
-    type: rss
-    url: https://www.propublica.org/feeds/propublica/main
-    verify: true
-  - name: Techdirt
-    type: rss
-    url: https://www.techdirt.com/feed/
-    verify: true
-# The interest feed: 10 topic areas, shown in this order.
+  - {name: NPR News, type: rss, url: "https://feeds.npr.org/1001/rss.xml"}
+  - {name: Associated Press, type: rss, url: "https://flipboard.com/@associatedpress/top-stories-u7govdf1z.rss"}
+  - {name: New York Times, type: rss, url: "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"}
+  - {name: ProPublica, type: rss, url: "https://www.propublica.org/feeds/propublica/main", verify: true}
+  - {name: Techdirt, type: rss, url: "https://www.techdirt.com/feed/"}
+
+# The interest feed: 12 sections, shown in this order.
 topics:
   - key: climate
     label: Climate & Clean Energy
@@ -53,7 +54,6 @@ topics:
       - {name: Smart Cities Dive, type: rss, url: "https://www.smartcitiesdive.com/feeds/news/"}
       - {name: Canary Media, type: rss, url: "https://www.canarymedia.com/rss.rss"}
       - {name: The Urbanist, type: rss, url: "https://www.theurbanist.org/feed/"}
-
 
   - key: local
     label: Seattle
@@ -65,17 +65,17 @@ topics:
   - key: outdoors
     label: Outdoors
     sources:
-      - {name: ExplorersWeb, type: rss, url: "https://explorersweb.com/feed/", verify: true}
-      - {name: iRunFar, type: rss, url: "https://www.irunfar.com/feed", verify: true}
-      - {name: Uphill Athlete, type: rss, url: "https://uphillathlete.com/feed/"}
+      - {name: ExplorersWeb, type: rss, url: "https://explorersweb.com/feed/"}
+      - {name: iRunFar, type: rss, url: "https://www.irunfar.com/feed"}
       - name: Mountain Tactical Institute
         type: rss
         url: https://mtntactical.com/feed/
         exclude: [SWAT, AFROTC, USAF, military, tactical athlete, police, fire, army, marine, ranger, selection, operator]
-      - {name: Sweat Science, type: rss, url: "https://sweatscience.substack.com/feed", verify: true}
       - {name: Stronger by Science, type: rss, url: "https://www.strongerbyscience.com/feed/"}
       - {name: TrainingBeta, type: rss, url: "https://www.trainingbeta.com/feed/"}
-
+      # Parked: both block GitHub's servers (403). See the PRD's coverage gaps.
+      # - {name: Uphill Athlete, type: rss, url: "https://uphillathlete.com/feed/"}
+      # - {name: Sweat Science, type: rss, url: "https://sweatscience.substack.com/feed"}
 
   - key: dnd
     label: D&D
@@ -103,41 +103,61 @@ topics:
       - {name: "PokéCommunity: ROM Hacks", type: rss, url: "https://www.pokecommunity.com/forums/progressing-rom-hacks-showcase.67/index.rss"}
       - {name: "PokéCommunity: Challenges", type: rss, url: "https://www.pokecommunity.com/forums/202/index.rss"}
 
-
   - key: sports
     label: Sports
     sources:
-      - {name: ESPN NFL, type: rss, url: "https://www.espn.com/espn/rss/nfl/news"}
-      - {name: ESPN College Football, type: rss, url: "https://www.espn.com/espn/rss/ncf/news", verify: true}
-      - {name: ESPN Soccer, type: rss, url: "https://www.espn.com/espn/rss/soccer/news", verify: true}
+      # The Athletic replaces ESPN, whose feeds came back empty on GitHub.
+      - {name: The Athletic NFL, type: rss, url: "https://www.nytimes.com/athletic/rss/nfl/", verify: true}
+      - {name: The Athletic Soccer, type: rss, url: "https://www.nytimes.com/athletic/rss/football/", verify: true}
+      - {name: The Athletic College Football, type: rss, url: "https://www.nytimes.com/athletic/rss/college-football/", verify: true}
       - {name: The Equalizer, type: rss, url: "https://equalizersoccer.com/feed/"}
       - {name: Uni Watch, type: rss, url: "https://www.uni-watch.com/feed/"}
-      - {name: Rodger Sherman, type: bluesky, handle: rodger.bsky.social}
-      - {name: Mina Kimes, type: bluesky, handle: minakimes.bsky.social}
-      - {name: The Athletic FC, type: bluesky, handle: theathleticfc.bsky.social}
 
+  - key: money
+    label: Money
+    sources:
+      - name: A Wealth of Common Sense
+        type: rss
+        url: https://awealthofcommonsense.com/feed/
+        # Written posts only: skip the podcast episodes.
+        exclude: [Animal Spirits, Talk Your Book, Ask the Compound, podcast, TCAF]
+      - name: Get Rich Slowly
+        type: archive
+        feed: https://www.getrichslowly.org/save/feed/
+        pages: 12
+      - name: The Evidence-Based Investor
+        type: archive
+        sitemap: https://www.evidenceinvestor.com/blog-posts-sitemap.xml
+        # Skip UK-only topics.
+        exclude: [isa, isas, premium bonds, budget, hmrc, sipp, pension, uk, britain, british, fca, gilts, chancellor, reeves, ftse]
 
   - key: clothing
     label: Clothing
     sources:
       - {name: Put This On, type: rss, url: "https://putthison.com/feed/"}
-      - {name: Derek Guy, type: bluesky, handle: dieworkwear.bsky.social}
-
 
   - key: puzzles
     label: Puzzles
     sources:
       - {name: Daily game, type: dles}
       - {name: Diary of a Crossword Fiend, type: rss, url: "https://www.crosswordfiend.com/feed/"}
-      # Parked until there's a Money section:
-      # - {name: Bogle Center, type: rss, url: "https://boglecenter.net/feed/"}
+      - {name: Wikipedia, type: wikipedia, count: 3, extra: true}
 
   - key: humor
     label: Humor
     sources:
-      - {name: The Onion, type: bluesky, handle: theonion.com}
+      - {name: The Onion, type: rss, url: "https://theonion.com/rss"}
+
+  - key: bluesky
+    label: Bluesky
+    max: 4
+    sources:
       - {name: Darth, type: bluesky, handle: darthbluesky.bsky.social}
       - {name: Peter, type: bluesky, handle: notalawyer.bsky.social}
+      - {name: Rodger Sherman, type: bluesky, handle: rodger.bsky.social}
+      - {name: Mina Kimes, type: bluesky, handle: minakimes.bsky.social}
+      - {name: The Athletic FC, type: bluesky, handle: theathleticfc.bsky.social}
+      - {name: Derek Guy, type: bluesky, handle: dieworkwear.bsky.social}
 
   - key: videos
     label: Videos

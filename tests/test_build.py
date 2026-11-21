@@ -28,18 +28,25 @@ def edition(tmp_path):
     return payload, fixtures, out, history
 
 
+def news(items):
+    """Everything except picks shown on top of the caps (Wikipedia)."""
+    return [i for i in items if i["kind"] != "wikipedia"]
+
+
 def test_edition_size(edition):
     payload, *_ = edition
-    assert len(payload["items"]) == SETTINGS["posts_per_batch"]
+    assert len(news(payload["items"])) == SETTINGS["posts_per_batch"]
     assert len(payload["briefing"]) == SETTINGS["briefing_size"]
     assert len(payload["reserve"]) <= SETTINGS["reserve_size"]
 
 
 def test_caps(edition):
     payload, *_ = edition
-    topics = Counter(i["topic"] for i in payload["items"])
-    sources = Counter(i["source"] for i in payload["items"])
-    assert max(topics.values()) <= SETTINGS["max_per_topic"]
+    topics = Counter(i["topic"] for i in news(payload["items"]))
+    sources = Counter(i["source"] for i in news(payload["items"]))
+    config = yaml.safe_load((ROOT / "sources.yaml").read_text())
+    caps = {t["key"]: t.get("max", SETTINGS["max_per_topic"]) for t in config["topics"]}
+    assert all(n <= caps[t] for t, n in topics.items())
     assert max(sources.values()) <= SETTINGS["max_per_source"]
 
 
@@ -89,7 +96,7 @@ def test_broken_feed_does_not_break_edition(tmp_path):
     payload = build.build(ROOT / "sources.yaml", tmp_path / "d.json", tmp_path / "h.json", fixtures)
     report = {s["source"]: s for s in payload["sources"]}
     assert report["Utility Dive"]["ok"] is False
-    assert len(payload["items"]) == SETTINGS["posts_per_batch"]
+    assert len(news(payload["items"])) == SETTINGS["posts_per_batch"]
 
 
 def test_youtube_feed_skips_shorts():
@@ -137,3 +144,44 @@ def test_slow_sources_still_get_in(tmp_path):
     weekly = [it(1, "Sly Flourish", 24 * 5)]
     picked = build.fresh_by_source(busy + weekly, SETTINGS, now, set())
     assert any(i.source == "Sly Flourish" for i in picked)
+
+
+def test_happening_now_takes_live_blogs_out_of_the_briefing(edition):
+    payload, *_ = edition
+    assert [i["title"] for i in payload["happening"]] == ["Live updates: Storm makes landfall on the Gulf Coast"]
+    assert all(not i["title"].lower().startswith("live updates") for i in payload["briefing"])
+    assert payload["happening"][0]["kind"] == "live"
+
+
+def test_wikipedia_picks_sit_on_top_of_the_puzzles_cap(edition):
+    payload, *_ = edition
+    puzzles = [i for i in payload["items"] if i["topic"] == "puzzles"]
+    wiki = [i for i in puzzles if i["kind"] == "wikipedia"]
+    assert len(wiki) == 3
+    assert len(puzzles) - len(wiki) <= SETTINGS["max_per_topic"]
+
+
+def test_bluesky_has_its_own_section(edition):
+    payload, *_ = edition
+    posts = [i for i in payload["items"] + payload["reserve"] if i["kind"] == "post"]
+    assert posts and all(i["topic"] == "bluesky" for i in posts)
+    config = yaml.safe_load((ROOT / "sources.yaml").read_text())
+    cap = next(t["max"] for t in config["topics"] if t["key"] == "bluesky")
+    assert sum(1 for i in payload["items"] if i["topic"] == "bluesky") <= cap
+
+
+def test_money_mixes_live_posts_and_archive_picks(edition):
+    payload, *_ = edition
+    money = [i for i in payload["items"] + payload["reserve"] if i["topic"] == "money"]
+    kinds = {i["source"]: i["kind"] for i in money}
+    assert kinds.get("Get Rich Slowly") == "archive"
+    assert kinds.get("The Evidence-Based Investor") == "archive"
+    titles = [i["title"] for i in payload["items"] + payload["reserve"] if i["source"] == "A Wealth of Common Sense"]
+    assert titles and not any("Animal Spirits" in t or "Talk Your Book" in t for t in titles)
+
+
+def test_backup_run_skips_an_edition_already_built(edition):
+    payload, fixtures, out, history = edition
+    assert build.build(ROOT / "sources.yaml", out, history, fixtures, skip_if_built=True) is None
+    later = datetime.now(timezone.utc) + timedelta(hours=12)
+    assert build.build(ROOT / "sources.yaml", out, history, fixtures, now=later, skip_if_built=True) is not None
